@@ -44,7 +44,7 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 				continue
 			}
 			item := parseHNItem(hnItem)
-			if isStoryLink(item) {
+			if item.isStoryLink() {
 				stories = append(stories, item)
 				if len(stories) >= numStories {
 					break
@@ -63,7 +63,7 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 	})
 }
 
-func isStoryLink(item item) bool {
+func (item item) isStoryLink() bool {
 	return item.Type == "story" && item.URL != ""
 }
 
