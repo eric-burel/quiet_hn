@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 )
 
@@ -65,23 +66,62 @@ func (c *Client) GetItem(id int) (Item, error) {
 	return item, nil
 }
 
+func (c *Client) GetValidItem(id int, ch chan *ParsedItem) {
+	fmt.Printf("Get item %d\n", id)
+	hnItem, err := c.GetItem(id)
+	item := ParseHNItem(hnItem)
+	if item.isStoryLink() {
+		// ignore this item
+		ch <- nil
+	}
+	if err != nil {
+		ch <- nil
+	}
+	ch <- &item
+}
+
 func (c *Client) GetItems(ids []int, numStories int) ([]ParsedItem, error) {
 	var stories []ParsedItem
-	for _, id := range ids {
-		hnItem, err := c.GetItem(id)
-		if err != nil {
-			continue
+	// Channel can be buffered, we want to send only 30 stories
+	// this means checking the story validity in the goroutine
+	ch := make(chan *ParsedItem, numStories)
+
+	// Get a slice of 30 ids * 1.25
+	// Trigger a goroutine per id
+	// Append to stories
+	// Done if 30 stories, otherwise get a new slice of missing count + 5
+
+	slice_start := 0
+	for len(stories) < numStories && slice_start < len(ids) {
+		slice_end := int(math.Min(float64(slice_start+35), float64(len(ids))))
+		ids_slice := ids[slice_start:slice_end]
+		slice_length := slice_end - slice_start
+		fmt.Printf("Looking for ids in slice %d:%d\n", slice_start, slice_end)
+
+		for _, id := range ids_slice {
+			go c.GetValidItem(id, ch)
 		}
-		item := ParseHNItem(hnItem)
-		if item.isStoryLink() {
-			stories = append(stories, item)
-			if len(stories) >= numStories {
-				break
+
+		for i := 0; i < slice_length; i++ {
+			item := <-ch
+			if item != nil {
+				stories = append(stories, *item)
 			}
 		}
+
+		slice_start = slice_end
 	}
+	// at this point, we may have
+	// - too few stories if we ran out of ids
+	// - too many stories if the stories we fetched were all valid
+
 	if len(stories) < numStories {
 		return stories, errors.New("not enough stories")
+	}
+	// TODO sort stories
+	if len(stories) > numStories {
+		// TODO remove additional stories
+		stories = stories[0:numStories]
 	}
 	return stories, nil
 }
