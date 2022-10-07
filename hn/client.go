@@ -3,6 +3,7 @@ package hn
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 )
@@ -62,6 +63,27 @@ func (c *Client) GetItem(id int) (Item, error) {
 		return item, err
 	}
 	return item, nil
+}
+
+func (c *Client) GetItems(ids []int, numStories int) ([]ParsedItem, error) {
+	var stories []ParsedItem
+	for _, id := range ids {
+		hnItem, err := c.GetItem(id)
+		if err != nil {
+			continue
+		}
+		item := ParseHNItem(hnItem)
+		if item.isStoryLink() {
+			stories = append(stories, item)
+			if len(stories) >= numStories {
+				break
+			}
+		}
+	}
+	if len(stories) < numStories {
+		return stories, errors.New("not enough stories")
+	}
+	return stories, nil
 }
 
 // Item represents a single item returned by the HN API. This can have a type

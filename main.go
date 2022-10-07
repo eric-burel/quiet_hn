@@ -6,8 +6,6 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"net/url"
-	"strings"
 	"time"
 
 	"quiet_hn/hn"
@@ -25,7 +23,9 @@ func main() {
 	http.HandleFunc("/", handler(numStories, tpl))
 
 	// Start the server
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+	serverUrl := fmt.Sprintf(":%d", port)
+	fmt.Printf("Server running at http://localhost%s", serverUrl)
+	log.Fatal(http.ListenAndServe(serverUrl, nil))
 }
 
 func handler(numStories int, tpl *template.Template) http.HandlerFunc {
@@ -37,19 +37,9 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 			http.Error(w, "Failed to load top stories", http.StatusInternalServerError)
 			return
 		}
-		var stories []item
-		for _, id := range ids {
-			hnItem, err := client.GetItem(id)
-			if err != nil {
-				continue
-			}
-			item := parseHNItem(hnItem)
-			if item.isStoryLink() {
-				stories = append(stories, item)
-				if len(stories) >= numStories {
-					break
-				}
-			}
+		stories, err := client.GetItems(ids, numStories)
+		if err != nil {
+			fmt.Println("Could not load 30 stories")
 		}
 		data := templateData{
 			Stories: stories,
@@ -63,26 +53,7 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 	})
 }
 
-func (item item) isStoryLink() bool {
-	return item.Type == "story" && item.URL != ""
-}
-
-func parseHNItem(hnItem hn.Item) item {
-	ret := item{Item: hnItem}
-	url, err := url.Parse(ret.URL)
-	if err == nil {
-		ret.Host = strings.TrimPrefix(url.Hostname(), "www.")
-	}
-	return ret
-}
-
-// item is the same as the hn.Item, but adds the Host field
-type item struct {
-	hn.Item
-	Host string
-}
-
 type templateData struct {
-	Stories []item
+	Stories []hn.ParsedItem
 	Time    time.Duration
 }
