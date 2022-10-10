@@ -81,7 +81,6 @@ func (c *Client) GetValidItem(id int, ch chan *ParsedItem) {
 }
 
 func (c *Client) GetItems(ids []int, numStories int) ([]ParsedItem, error) {
-	var stories []ParsedItem
 	// Channel can be buffered, we want to send only 30 stories
 	// this means checking the story validity in the goroutine
 	ch := make(chan *ParsedItem, numStories)
@@ -91,22 +90,26 @@ func (c *Client) GetItems(ids []int, numStories int) ([]ParsedItem, error) {
 	// Append to stories
 	// Done if 30 stories, otherwise get a new slice of missing count + 5
 
+	stories_map := make(map[int]ParsedItem)
+
 	slice_start := 0
-	for len(stories) < numStories && slice_start < len(ids) {
+	for len(stories_map) < numStories && slice_start < len(ids) {
 		slice_end := int(math.Min(float64(slice_start+35), float64(len(ids))))
 		ids_slice := ids[slice_start:slice_end]
-		slice_length := slice_end - slice_start
+		//slice_length := slice_end - slice_start
 		fmt.Printf("Looking for ids in slice %d:%d\n", slice_start, slice_end)
 
 		for _, id := range ids_slice {
 			go c.GetValidItem(id, ch)
 		}
 
-		for i := 0; i < slice_length; i++ {
+		for range ids_slice {
 			item := <-ch
 			if item != nil {
-				stories = append(stories, *item)
+				fmt.Printf("Got an item %s", item.Title)
+				stories_map[item.ID] = *item
 			}
+			//stories = append(stories, item)
 		}
 
 		slice_start = slice_end
@@ -115,10 +118,23 @@ func (c *Client) GetItems(ids []int, numStories int) ([]ParsedItem, error) {
 	// - too few stories if we ran out of ids
 	// - too many stories if the stories we fetched were all valid
 
+	// ids are already sorted => just build a map of fetched stories per id
+	var stories []ParsedItem
+	// for each id READ IN ORDER, check if the story is in map, if yes, add to stories,
+	// stop when we have found all ids of the map
+	// => we end up with a sorted list of stories
+	for i := 0; i < len(ids) && len(stories) < len(stories_map); i++ {
+		id := ids[i]
+		story, has := stories_map[id]
+		if has {
+			stories = append(stories, story)
+		}
+
+	}
+
 	if len(stories) < numStories {
 		return stories, errors.New("not enough stories")
 	}
-	// TODO sort stories
 	if len(stories) > numStories {
 		// TODO remove additional stories
 		stories = stories[0:numStories]
