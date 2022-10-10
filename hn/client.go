@@ -136,7 +136,6 @@ func (c *Client) GetItems(ids []int, numStories int) ([]ParsedItem, error) {
 		return stories, errors.New("not enough stories")
 	}
 	if len(stories) > numStories {
-		// TODO remove additional stories
 		stories = stories[0:numStories]
 	}
 	return stories, nil
